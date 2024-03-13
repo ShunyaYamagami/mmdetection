@@ -55,6 +55,11 @@ class DeticBBoxHead(Shared2FCBBoxHead):
                  *args,
                  **kwargs) -> None:
         super().__init__(*args, **kwargs)
+
+        # ------------------------------------------------------
+        fed_loss_num_cat = min(fed_loss_num_cat, kwargs['num_classes'] + 1)
+        # ------------------------------------------------------
+        
         # reconstruct fc_cls and fc_reg since input channels are changed
         assert self.with_cls
 
