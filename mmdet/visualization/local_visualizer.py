@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import cv2
 import mmcv
 import numpy as np
+from torchvision.ops import nms
 
 try:
     import seaborn as sns
@@ -89,7 +90,7 @@ class DetLocalVisualizer(Visualizer):
                                             Tuple[int]]] = (200, 200, 200),
                  mask_color: Optional[Union[str, Tuple[int]]] = None,
                  line_width: Union[int, float] = 3,
-                 alpha: float = 0.8) -> None:
+                 alpha: float = 0.3) -> None:
         super().__init__(
             name=name,
             image=image,
@@ -160,7 +161,8 @@ class DetLocalVisualizer(Visualizer):
                     label_text,
                     pos,
                     colors=text_colors[i],
-                    font_sizes=int(13 * scales[i]),
+                    # font_sizes=int(13 * scales[i]),
+                    font_sizes=int(45 * scales[i]),
                     bboxes=[{
                         'facecolor': 'black',
                         'alpha': 0.8,
@@ -182,7 +184,8 @@ class DetLocalVisualizer(Visualizer):
             mask_color = palette if self.mask_color is None \
                 else self.mask_color
             mask_palette = get_palette(mask_color, max_label + 1)
-            colors = [jitter_color(mask_palette[label]) for label in labels]
+            # colors = [jitter_color(mask_palette[label]) for label in labels]
+            colors = [mask_palette[label] for label in labels]
             text_palette = get_palette(self.text_color, max_label + 1)
             text_colors = [text_palette[label] for label in labels]
 
@@ -224,7 +227,7 @@ class DetLocalVisualizer(Visualizer):
                         label_text,
                         pos,
                         colors=text_colors[i],
-                        font_sizes=int(13 * scales[i]),
+                        font_sizes=int(30 * scales[i]),
                         horizontal_alignments='center',
                         bboxes=[{
                             'facecolor': 'black',
@@ -465,6 +468,9 @@ class DetLocalVisualizer(Visualizer):
                 pred_instances = data_sample.pred_instances
                 pred_instances = pred_instances[
                     pred_instances.scores > pred_score_thr]
+                # 重なりを避ける
+                # nms_instances = nms(pred_instances.bboxes, pred_instances.scores, 0.5)
+                # pred_instances = pred_instances[nms_instances]
                 pred_img_data = self._draw_instances(image, pred_instances,
                                                      classes, palette)
 
@@ -542,7 +548,7 @@ class TrackLocalVisualizer(Visualizer):
                  vis_backends: Optional[Dict] = None,
                  save_dir: Optional[str] = None,
                  line_width: Union[int, float] = 3,
-                 alpha: float = 0.8) -> None:
+                 alpha: float = 0.4) -> None:
         super().__init__(name, image, vis_backends, save_dir)
         self.line_width = line_width
         self.alpha = alpha

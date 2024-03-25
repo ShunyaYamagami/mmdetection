@@ -5,15 +5,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import Conv2d
-from mmengine.model import caffe2_xavier_init
-from mmengine.structures import InstanceData, PixelData
-from torch import Tensor
-
 from mmdet.models.layers.pixel_decoder import PixelDecoder
 from mmdet.registry import MODELS, TASK_UTILS
 from mmdet.structures import SampleList
 from mmdet.utils import (ConfigType, InstanceList, OptConfigType,
                          OptMultiConfig, reduce_mean)
+from mmengine.model import caffe2_xavier_init
+from mmengine.structures import InstanceData, PixelData
+from torch import Tensor
+
 from ..layers import DetrTransformerDecoder, SinePositionalEncoding
 from ..utils import multi_apply, preprocess_panoptic_gt
 from .anchor_free_head import AnchorFreeHead
@@ -85,6 +85,8 @@ class MaskFormerHead(AnchorFreeHead):
                      activate=True,
                      naive_dice=True,
                      loss_weight=1.0),
+                loss_supcon: ConfigType = dict(),
+                use_supcon=False,
                  train_cfg: OptConfigType = None,
                  test_cfg: OptConfigType = None,
                  init_cfg: OptMultiConfig = None,
@@ -130,6 +132,8 @@ class MaskFormerHead(AnchorFreeHead):
         self.loss_cls = MODELS.build(loss_cls)
         self.loss_mask = MODELS.build(loss_mask)
         self.loss_dice = MODELS.build(loss_dice)
+        self.loss_supcon = MODELS.build(loss_supcon)
+        self.use_supcon = use_supcon
 
     def init_weights(self) -> None:
         if isinstance(self.decoder_input_proj, Conv2d):
@@ -322,6 +326,7 @@ class MaskFormerHead(AnchorFreeHead):
                 neg_inds, sampling_result)
 
     def loss_by_feat(self, all_cls_scores: Tensor, all_mask_preds: Tensor,
+                     all_decoder_outs: Tensor,
                      batch_gt_instances: List[InstanceData],
                      batch_img_metas: List[dict]) -> Dict[str, Tensor]:
         """Loss function.
@@ -345,8 +350,8 @@ class MaskFormerHead(AnchorFreeHead):
             batch_gt_instances for _ in range(num_dec_layers)
         ]
         img_metas_list = [batch_img_metas for _ in range(num_dec_layers)]
-        losses_cls, losses_mask, losses_dice = multi_apply(
-            self._loss_by_feat_single, all_cls_scores, all_mask_preds,
+        losses_cls, losses_mask, losses_dice, loss_supcon = multi_apply(
+            self._loss_by_feat_single, all_cls_scores, all_mask_preds, all_decoder_outs,
             batch_gt_instances_list, img_metas_list)
 
         loss_dict = dict()
@@ -354,13 +359,18 @@ class MaskFormerHead(AnchorFreeHead):
         loss_dict['loss_cls'] = losses_cls[-1]
         loss_dict['loss_mask'] = losses_mask[-1]
         loss_dict['loss_dice'] = losses_dice[-1]
+        if self.use_supcon:
+            loss_dict['loss_supcon'] = loss_supcon[-1]
         # loss from other decoder layers
         num_dec_layer = 0
-        for loss_cls_i, loss_mask_i, loss_dice_i in zip(
-                losses_cls[:-1], losses_mask[:-1], losses_dice[:-1]):
+        for loss_cls_i, loss_mask_i, loss_dice_i, loss_supcon_i in zip(
+                losses_cls[:-1], losses_mask[:-1], losses_dice[:-1], loss_supcon[:-1]):
             loss_dict[f'd{num_dec_layer}.loss_cls'] = loss_cls_i
             loss_dict[f'd{num_dec_layer}.loss_mask'] = loss_mask_i
             loss_dict[f'd{num_dec_layer}.loss_dice'] = loss_dice_i
+            if self.use_supcon:
+                loss_dict[f'd{num_dec_layer}.loss_supcon'] = loss_supcon_i
+                print(loss_supcon_i)
             num_dec_layer += 1
         return loss_dict
 
@@ -551,14 +561,14 @@ class MaskFormerHead(AnchorFreeHead):
                 batch_gt_semantic_segs.append(None)
 
         # forward
-        all_cls_scores, all_mask_preds = self(x, batch_data_samples)
+        all_cls_scores, all_mask_preds, all_decoder_outs = self(x, batch_data_samples)
 
         # preprocess ground truth
         batch_gt_instances = self.preprocess_gt(batch_gt_instances,
                                                 batch_gt_semantic_segs)
 
         # loss
-        losses = self.loss_by_feat(all_cls_scores, all_mask_preds,
+        losses = self.loss_by_feat(all_cls_scores, all_mask_preds, all_decoder_outs,
                                    batch_gt_instances, batch_img_metas)
 
         return losses
@@ -586,7 +596,7 @@ class MaskFormerHead(AnchorFreeHead):
         batch_img_metas = [
             data_sample.metainfo for data_sample in batch_data_samples
         ]
-        all_cls_scores, all_mask_preds = self(x, batch_data_samples)
+        all_cls_scores, all_mask_preds, _ = self(x, batch_data_samples)
         mask_cls_results = all_cls_scores[-1]
         mask_pred_results = all_mask_preds[-1]
 
