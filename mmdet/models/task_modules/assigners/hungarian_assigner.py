@@ -119,6 +119,7 @@ class HungarianAssigner(BaseAssigner):
                 pred_instances=pred_instances,
                 gt_instances=gt_instances,
                 img_meta=img_meta)
+            cost[cost.isnan()] = 1e6
             cost_list.append(cost)
         cost = torch.stack(cost_list).sum(dim=0)
 

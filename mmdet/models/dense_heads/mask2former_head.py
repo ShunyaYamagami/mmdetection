@@ -223,18 +223,10 @@ class Mask2FormerHead(MaskFormerHead):
         sampled_pred_instances = InstanceData(
             scores=cls_score, masks=mask_points_pred)
         # assign and sample
-        try:
-            assign_result = self.assigner.assign(
-                pred_instances=sampled_pred_instances,
-                gt_instances=sampled_gt_instances,
-                img_meta=img_meta)
-        except Exception as e:
-            # print(e)
-            print('gt_labels:', gt_labels)
-            print('gt_masks:', gt_masks)
-            print('cls_score:', cls_score)
-            print('mask_pred:', mask_pred)
-            raise e         
+        assign_result = self.assigner.assign(
+            pred_instances=sampled_pred_instances,
+            gt_instances=sampled_gt_instances,
+            img_meta=img_meta)
         pred_instances = InstanceData(scores=cls_score, masks=mask_pred)
         sampling_result = self.sampler.sample(
             assign_result=assign_result,

@@ -370,7 +370,6 @@ class MaskFormerHead(AnchorFreeHead):
             loss_dict[f'd{num_dec_layer}.loss_dice'] = loss_dice_i
             if self.use_supcon:
                 loss_dict[f'd{num_dec_layer}.loss_supcon'] = loss_supcon_i
-                print(loss_supcon_i)
             num_dec_layer += 1
         return loss_dict
 
